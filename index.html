@@ -1,1 +1,324 @@
 
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gioco del Sette e Mezzo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1b4d3e;
+            color: white;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #ffd700;
+            margin-bottom: 5px;
+        }
+        .rules {
+            font-size: 0.9rem;
+            color: #ddd;
+            margin-bottom: 20px;
+        }
+        .game-zone {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .area {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            min-height: 120px;
+        }
+        .area h2 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            color: #a3e2c9;
+        }
+        .cards-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .card {
+            background: white;
+            color: black;
+            width: 70px;
+            height: 110px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 8px;
+            box-shadow: 3px 3px 5px rgba(0,0,0,0.5);
+            font-weight: bold;
+            font-size: 1.1rem;
+            position: relative;
+        }
+        .card.red { color: #d12e2e; }
+        .card.gold { color: #b8860b; }
+        .card.black { color: #111; }
+        .card.green { color: #007a3d; }
+        
+        .controls {
+            margin-top: 20px;
+        }
+        button {
+            background-color: #ffd700;
+            color: #111;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background-color: #fff;
+            transform: scale(1.05);
+        }
+        button:disabled {
+            background-color: #555;
+            color: #888;
+            cursor: not-allowed;
+            transform: none;
+        }
+        #message {
+            font-size: 1.4rem;
+            font-weight: bold;
+            margin: 20px 0;
+            min-height: 35px;
+            color: #fff;
+        }
+        .highlight {
+            color: #ffd700;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Sette e Mezzo</h1>
+    <div class="rules">Le figure valgono 0.5. Il Re di Denari (10 ♦) è il Matto. Il Banco vince in caso di parità.</div>
+    
+    <div id="message">Fai la tua mossa!</div>
+
+    <div class="game-zone">
+        <div class="area">
+            <h2>Banco (Punteggio: <span id="dealer-score">0</span>)</h2>
+            <div id="dealer-cards" class="cards-container"></div>
+        </div>
+
+        <div class="area">
+            <h2>Tuo Punteggio: <span id="player-score">0</span></h2>
+            <div id="player-cards" class="cards-container"></div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="btn-hit" onclick="playerHit()">Carta</button>
+        <button id="btn-stand" onclick="playerStand()">Stai</button>
+        <button id="btn-restart" onclick="initGame()" style="display:none;">Gioca Ancora</button>
+    </div>
+</div>
+
+<script>
+    // Configurazione del Mazzo Piacentino/Napoletano (40 carte)
+    const semi = [
+        { nome: 'Denari', simbolo: '♦', classe: 'gold' },
+        { nome: 'Coppe', simbolo: '♥', classe: 'red' },
+        { nome: 'Spade', simbolo: '♠', classe: 'black' },
+        { nome: 'Bastoni', simbolo: '♣', classe: 'green' }
+    ];
+    const valori = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // 8=Fante, 9=Cavallo, 10=Re
+
+    let mazzo = [];
+    let manoGiocatore = [];
+    let manoBanco = [];
+    let giocoFinito = false;
+
+    // Inizializza il mazzo di carte
+    function creaMazzo() {
+        mazzo = [];
+        for (let seme of semi) {
+            for (let valore of valori) {
+                mazzo.push({ valore: valore, seme: seme });
+            }
+        }
+    }
+
+    // Mescola il mazzo (Algoritmo di Fisher-Yates)
+    function mescolaMazzo() {
+        for (let i = mazzo.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [mazzo[i], mazzo[j]] = [mazzo[j], mazzo[i]];
+        }
+    }
+
+    // Calcola il punteggio della mano prendendo in considerazione il Matto (Re di Denari = 10 di Denari)
+    function calcolaPunteggio(mano) {
+        let totale = 0;
+        let haMatto = false;
+
+        for (let carta of mano) {
+            if (carta.valore === 10 && carta.seme.nome === 'Denari') {
+                haMatto = true;
+            } else if (carta.valore > 7) {
+                totale += 0.5; // Le figure valgono mezzo punto
+            } else {
+                totale += carta.valore;
+            }
+        }
+
+        // Logica del Matto
+        if (haMatto) {
+            // Se la mano ha solo il matto, conviene farlo valere 7 o 0.5 a seconda dei casi.
+            // Cerchiamo il miglior punteggio possibile che non sballi il 7.5
+            let migliorPunteggio = totale;
+            let possibiliValori = [7, 6, 5, 4, 3, 2, 1, 0.5];
+            
+            for (let v of possibiliValori) {
+                if (totale + v <= 7.5) {
+                    migliorPunteggio = totale + v;
+                    break;
+                }
+            }
+            // Se sballa comunque, aggiungiamo il minimo (0.5)
+            if (migliorPunteggio === totale && totale + 0.5 > 7.5) {
+                totale += 0.5;
+            } else {
+                totale = migliorPunteggio;
+            }
+        }
+
+        return totale;
+    }
+
+    // Rende graficamente una carta in HTML
+    function generaHtmlCarta(carta) {
+        let label = carta.valore;
+        if (carta.valore === 8) label = 'Fante';
+        if (carta.valore === 9) label = 'Cav.';
+        if (carta.valore === 10) label = 'Re';
+        
+        // Evidenziazione speciale per il Matto
+        const èMatto = (carta.valore === 10 && carta.seme.nome === 'Denari');
+        const stileMatto = èMatto ? 'border: 2px solid #ffd700; background: #fffdf0;' : '';
+
+        return `
+            <div class="card ${carta.seme.classe}" style="${stileMatto}">
+                <div>${label}</div>
+                <div style="font-size: 2rem; align-self: center;">${carta.seme.simbolo}</div>
+                <div style="align-self: flex-end; transform: rotate(180deg);">${label}</div>
+            </div>
+        `;
+    }
+
+    // Aggiorna l'interfaccia utente
+    function aggiornaUI() {
+        // Carte e punteggio giocatore
+        const pCardsDiv = document.getElementById('player-cards');
+        pCardsDiv.innerHTML = manoGiocatore.map(c => generaHtmlCarta(c)).join('');
+        document.getElementById('player-score').innerText = calcolaPunteggio(manoGiocatore);
+
+        // Carte e punteggio banco
+        const dCardsDiv = document.getElementById('dealer-cards');
+        dCardsDiv.innerHTML = manoBanco.map(c => generaHtmlCarta(c)).join('');
+        document.getElementById('dealer-score').innerText = calcolaPunteggio(manoBanco);
+    }
+
+    // Turno del giocatore: Chiede una carta
+    function playerHit() {
+        if (giocoFinito) return;
+
+        manoGiocatore.push(mazzo.pop());
+        aggiornaUI();
+
+        const punteggio = calcolaPunteggio(manoGiocatore);
+        if (punteggio > 7.5) {
+            endGame("<span class='highlight'>Hai sballato!</span> Il Banco vince.");
+        }
+    }
+
+    // Turno del giocatore: Decide di fermarsi
+    function playerStand() {
+        if (giocoFinito) return;
+
+        document.getElementById('btn-hit').disabled = true;
+        document.getElementById('btn-stand').disabled = true;
+
+        // Turno del Banco (AI)
+        let punteggioGiocatore = calcolaPunteggio(manoGiocatore);
+        let punteggioBanco = calcolaPunteggio(manoBanco);
+
+        // Il banco tira finché è sotto il giocatore e non ha sballato, 
+        // oppure rischia se il giocatore ha un punteggio alto (il banco vince anche a parità)
+        while (punteggioBanco < punteggioGiocatore && punteggioBanco <= 7.5) {
+            manoBanco.push(mazzo.pop());
+            punteggioBanco = calcolaPunteggio(manoBanco);
+        }
+
+        aggiornaUI();
+
+        // Verifica vincitore
+        if (punteggioBanco > 7.5) {
+            endGame("Il Banco ha sballato! <span class='highlight'>Hai vinto!</span>");
+        } else if (punteggioBanco >= punteggioGiocatore) {
+            endGame(`Il Banco vince con ${punteggioBanco} a ${punteggioGiocatore}.`);
+        } else {
+            endGame(`<span class='highlight'>Hai vinto!</span> ${punteggioGiocatore} a ${punteggioBanco}.`);
+        }
+    }
+
+    // Termina la partita e mostra i pulsanti di reset
+    function endGame(messaggio) {
+        giocoFinito = true;
+        document.getElementById('message').innerHTML = messaggio;
+        document.getElementById('btn-hit').disabled = true;
+        document.getElementById('btn-stand').disabled = true;
+        document.getElementById('btn-restart').style.display = 'inline-block';
+    }
+
+    // Inizializza una nuova partita
+    function initGame() {
+        creaMazzo();
+        mescolaMazzo();
+
+        manoGiocatore = [mazzo.pop()];
+        manoBanco = [mazzo.pop()];
+        giocoFinito = false;
+
+        document.getElementById('message').innerText = "Fai la tua mossa!";
+        document.getElementById('btn-hit').disabled = false;
+        document.getElementById('btn-stand').disabled = false;
+        document.getElementById('btn-restart').style.display = 'none';
+
+        aggiornaUI();
+
+        // Controllo se il giocatore fa subito 7 e mezzo reale con la prima carta (Matto + 7)
+        // Nota: Con una sola carta al massimo si ha 7, quindi il controllo avviene man mano.
+    }
+
+    // Avvia il gioco al caricamento della pagina
+    window.onload = initGame;
+</script>
+
+</body>
+</html>
